@@ -1,0 +1,154 @@
+"""
+This multilayer perceptron implementation uses "numpy" for efficient matrix operations.
+"""
+import numpy as np
+
+def cost(expected, predicted):
+    """
+    The cost function calculates the mean squared error by squaring the difference between the expected output and the
+    predicted output of each node in the output layer and averaging these values. The cost function assigns a penalty to
+    each inference which the backpropogation algorithm (below) seeks to minimize by tuning the weights and biases.
+    """
+    sigma = 0
+    for e, p in zip(expected, predicted):
+        sigma += (e - p) ** 2
+
+    return sigma / len(expected);
+
+def cost_derivative(expected, predicted):
+    """
+    This cost_prime method calculates the derivative of the cost function to be used in the backpropogation
+    algorithm (below).
+    """
+    return expected - predicted
+
+def sigmoid(z):
+    """
+    The sigmoid method calculates the derivative of the cost function to be used in the backpropogation
+    algorithm (below).
+    """
+    return 1 / (1 + np.exp(-z))
+
+
+def sigmoid_prime(z):
+    """
+    This cost_prime method calculates the derivative of the sigmoid function to be used in the backpropogation
+    algorithm (below).
+    """
+    sig = sigmoid(z)
+    return sig * (1 - sig)
+
+
+class MLP:
+    def __init__(self, layers):
+        """
+        The constructor uses two parameters: "layers" and "alpha." The layers parameter is an array in which each
+        item details the number of nodes in that layer. The constructor builds two new arrays: "weights" and "biases."
+        The weights array contains 2D sub-arrays in which the rows correspond with layer L and the columns with layer
+        L - 1. In the biases array, each item contains a subarray with the biases of all nodes in that layer.
+        """
+        self.num_layers = len(layers)
+        self.weights = [np.random.randn(j, i) for i, j in zip(layers[:-1], layers[1:])]
+        self.biases = [np.random.randn(i, 1) for i in layers[1:]]
+
+    def feedforward(self, activations):
+        """
+        The feedforward method passes the inputs through the network and returns the output. The for loop iterates
+        through the weights and biases--moving layer by layer. By evaluating the dot product between the weights and the
+        activations, this method performs the basic perceptron operation of applying the weights and adding them.
+        Subsequently, the network applies the sigmoid "activation" function. We can change this function to tweak how
+        the model performs.
+        """
+        for weights, biases in zip(self.weights, self.biases):
+            activations = sigmoid(np.add(np.dot(weights, activations), biases))
+        return activations
+
+    def SGD(self, training, validation, batch_size, epochs):
+        """
+        The stochastic gradient decent method takes in training and validation data as parameters, and for every epoch,
+        shuffles the data, divides the data into batches of variable length, and calls "update_model" on the batch.
+        After each training session in the epoch, the method will test the model accuracy on the validation data and
+        reports back.
+        """
+        for epoch in range(epochs):
+            np.random.shuffle(training)
+            batches = [training[i: i + batch_size] for i in range(len(training))]
+
+            for batch in batches:
+                self.update_weights(batch, batch_size)
+
+            """
+            The code below tests the network and reports back on the accuracy. Ideally, the user should see an increase
+            in validation images correct each epoch until the network begins overfitting on the training data.
+            """
+            correct = 0
+            for x, y in validation:
+                if self.feedforward(x) == y:
+                    correct += 1
+
+            print("[+] Epoch {0} complete! {1}/{2} validation correct.".format(epoch, correct, len(validation)))
+
+    def update_model(self, batch, batch_size, alpha):
+        delta_nabla_w = np.zeros(self.weights.shape)
+        delta_nabla_b = np.zeros(self.biases.shape)
+
+        """
+        The for loop below calculates the gradient vector with which to update the weights and biases according to the
+        batch given. It factors in "alpha," the learning rate hyperparameter that dictates how much each
+        descent step should change the network. 
+        """
+        for x, y in batch:
+            nabla_w, nabla_b = self.backpropogation(x, y)
+            delta_nabla_w = np.add(delta_nabla_w, nabla_w * alpha)
+            delta_nabla_b = np.add(delta_nabla_b, nabla_b * alpha)
+
+        """
+        The lines below apply the updates to the network.
+        """
+        self.weights = np.subtract(self.weights, delta_nabla_w / batch_size)
+        self.biases = np.subtract(self.biases, delta_nabla_b / batch_size)
+
+    def backpropogation(self, x, y):
+        """
+        The nabla variables are the gradient vectors for the given training instance. The update_model method averages
+        these to increase training speed (and creating the "stochastic" descent ).
+        """
+        nabla_b = [np.zeros(b.shape) for b in self.biases]
+        nabla_w = [np.zeros(w.shape) for w in self.weights]
+
+        activation = x
+        activations = [activation]  # list to store all the activations, layer by layer
+        """
+        The zs array stoes all the z vectors. The z vectors are the activations before passing through the sigmoid
+        function.
+        """
+        z_vectors = []
+        """
+        The for loop is a feedforward pass through the network to record the activation functions for later usage.
+        """
+        for bias, weight in zip(self.biases, self.weights):
+            z = np.dot(weight, activation) + bias
+            z_vectors.append(z)
+            activation = sigmoid(z)
+            activations.append(activation)
+        """
+        The line below contains backpropogation formula one for calculating the error in the output layer.
+        """
+        delta = cost_derivative(activations[-1], y) * sigmoid_prime(z_vectors[-1])
+        nabla_b[-1] = delta
+        nabla_w[-1] = np.dot(delta, activations[-2].transpose())
+
+        for l in range(2, self.num_layers):
+            z = z_vectors[-l]
+            sp = sigmoid_prime(z)
+            """
+            The lines below contain backpropogation formulas two and three for calculating the error in the next layer
+            and rate of change of the cost with respect to any bias in the network.
+            """
+            delta = np.dot(self.weights[-l + 1].transpose(), delta) * sp
+            nabla_b[-l] = delta
+            nabla_w[-l] = np.dot(delta, activations[-l - 1].transpose())
+
+        return nabla_b, nabla_w
+
+network = MLP([784, 16, 16, 10])
